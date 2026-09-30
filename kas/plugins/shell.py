@@ -123,8 +123,7 @@ class ShellCommand(Command):
             cmd.append(self.cmd)
         ctx.environ['HISTFILE'] = os.path.join(ctx.kas_work_dir,
                                                SHELL_HISTORY_FILE)
-        ret = subprocess.call(cmd, env=ctx.environ,
-                              cwd=ctx.config.get_build_dir())
+        ret = subprocess.call(cmd, env=ctx.environ, cwd=ctx.build_dir)
         if ret != 0:
             logging.error('Shell returned non-zero exit status')
             raise CommandExecError(cmd, ret, True)

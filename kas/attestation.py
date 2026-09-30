@@ -216,7 +216,7 @@ class Statement:
             Warn if artifact timestamp is not within the build range.
         """
         logging.debug(f'Found artifact {name}:{path} in build dir')
-        fullpath = Path(self._ctx.config.get_build_dir()) / path
+        fullpath = Path(self._ctx.build_dir) / path
         mtime = datetime.fromtimestamp(fullpath.stat().st_mtime)
         if mtime < self._t_started or mtime > self._t_finished:
             logging.warning(
@@ -231,7 +231,7 @@ class Statement:
         subjects = []
         for n, s in self._ctx.config.get_artifacts(missing_ok=False):
             self._check_artifact_timestamp(n, s)
-            fullpath = Path(self._ctx.config.get_build_dir()) / s
+            fullpath = Path(self._ctx.build_dir) / s
             with open(fullpath, "rb") as f:
                 if sys.version_info < (3, 11):
                     digest = file_digest_slow(f, "sha256")

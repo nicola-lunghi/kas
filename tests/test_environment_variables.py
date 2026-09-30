@@ -29,27 +29,12 @@ import re
 import pytest
 import json
 import logging
-import yaml
 from types import SimpleNamespace
 from kas import kas
 from kas.context import create_global_context
 from kas.kasusererror import ArgsCombinationError, EnvSetButNotFoundError
 from kas.libcmds import SetupHome, SetupSSHAgent
 from kas import __version__
-
-
-def _write_config_with_build_dir(build_dir):
-    """
-        Copies test.yml to test-build-dir.yml, adding the given
-        ``build_dir`` value to the header (bumped to version 24).
-    """
-    with open('test.yml') as f:
-        yml = yaml.safe_load(f)
-    yml['header']['version'] = 24
-    yml['build_dir'] = build_dir
-    with open('test-build-dir.yml', 'w') as f:
-        yaml.safe_dump(yml, f)
-    return 'test-build-dir.yml'
 
 
 def mock_global_context():
@@ -81,126 +66,6 @@ def test_build_dir_can_be_specified_by_environment_variable(monkeykas, tmpdir):
     kas.kas(['checkout', 'test.yml'])
 
     assert os.path.exists(os.path.join(build_dir, 'conf'))
-
-
-def test_build_dir_can_be_specified_by_config_file(monkeykas, tmpdir):
-    conf_dir = str(tmpdir / 'test_env_variables')
-    shutil.copytree('tests/test_environment_variables', conf_dir)
-    monkeykas.chdir(conf_dir)
-
-    config = _write_config_with_build_dir('custom-build')
-    kas.kas(['checkout', config])
-
-    kas_wd = monkeykas.get_kwd()
-    assert (kas_wd / 'custom-build' / 'conf').exists()
-    # the default build dir must not have been created
-    assert not (kas_wd / 'build').exists()
-
-
-def test_build_dir_config_file_absolute_path(monkeykas, tmpdir):
-    conf_dir = str(tmpdir / 'test_env_variables')
-    abs_build_dir = str(tmpdir / 'abs-build-dir')
-    shutil.copytree('tests/test_environment_variables', conf_dir)
-    monkeykas.chdir(conf_dir)
-
-    config = _write_config_with_build_dir(abs_build_dir)
-    kas.kas(['checkout', config])
-
-    assert os.path.exists(os.path.join(abs_build_dir, 'conf'))
-
-
-def test_build_dir_config_file_relative_path_resolves_against_work_dir(
-        monkeykas, tmpdir):
-    conf_dir = str(tmpdir / 'test_env_variables')
-    work_dir = str(tmpdir / 'kas-work')
-    shutil.copytree('tests/test_environment_variables', conf_dir)
-    os.makedirs(work_dir)
-    # cwd (where the config file lives) is intentionally different
-    # from KAS_WORK_DIR, to verify the relative build_dir is resolved
-    # against the work dir and not against the current directory.
-    monkeykas.chdir(conf_dir)
-    monkeykas.setenv('KAS_WORK_DIR', work_dir)
-
-    config = _write_config_with_build_dir('relative-build')
-    kas.kas(['checkout', config])
-
-    assert os.path.exists(os.path.join(work_dir, 'relative-build', 'conf'))
-    assert not os.path.exists(os.path.join(conf_dir, 'relative-build'))
-
-
-def test_build_dir_environment_variable_overrides_config_file(
-        monkeykas, tmpdir):
-    conf_dir = str(tmpdir / 'test_env_variables')
-    env_build_dir = str(tmpdir / 'env-build-dir')
-    shutil.copytree('tests/test_environment_variables', conf_dir)
-    monkeykas.chdir(conf_dir)
-
-    config = _write_config_with_build_dir('config-build-dir')
-    monkeykas.setenv('KAS_BUILD_DIR', env_build_dir)
-    kas.kas(['checkout', config])
-
-    assert os.path.exists(os.path.join(env_build_dir, 'conf'))
-    assert not os.path.exists(os.path.join(conf_dir, 'config-build-dir'))
-
-
-def test_clean_commands_use_build_dir_from_config_file(monkeykas, tmpdir):
-    conf_dir = str(tmpdir / 'test_env_variables')
-    shutil.copytree('tests/test_environment_variables', conf_dir)
-    monkeykas.chdir(conf_dir)
-
-    config = _write_config_with_build_dir('custom-build')
-    kas.kas(['checkout', config])
-
-    kas_wd = monkeykas.get_kwd()
-    custom_build = kas_wd / 'custom-build'
-    assert custom_build.exists()
-    assert not (kas_wd / 'build').exists()
-
-    # fabricate leftovers to verify each clean command targets the
-    # config-specified build dir, not the (unused) default one
-    (custom_build / 'tmp-glibc').mkdir()
-    (custom_build / 'sstate-cache').mkdir()
-    (custom_build / 'sstate-cache' / 'leftover').touch()
-    (custom_build / 'downloads').mkdir()
-    (custom_build / 'downloads' / 'leftover').touch()
-
-    kas.kas(['clean', config])
-    assert not (custom_build / 'tmp-glibc').exists()
-    assert (custom_build / 'sstate-cache' / 'leftover').exists()
-    assert (custom_build / 'downloads' / 'leftover').exists()
-
-    (custom_build / 'tmp-glibc').mkdir()
-    kas.kas(['cleansstate', config])
-    assert not (custom_build / 'tmp-glibc').exists()
-    assert not (custom_build / 'sstate-cache' / 'leftover').exists()
-    assert (custom_build / 'downloads' / 'leftover').exists()
-
-    (custom_build / 'tmp-glibc').mkdir()
-    (custom_build / 'sstate-cache' / 'leftover').touch()
-    kas.kas(['cleanall', config])
-    assert not (custom_build / 'tmp-glibc').exists()
-    assert not (custom_build / 'sstate-cache' / 'leftover').exists()
-    assert not (custom_build / 'downloads' / 'leftover').exists()
-
-    kas.kas(['purge', config])
-    assert not any(custom_build.iterdir())
-
-
-def test_clean_command_env_var_overrides_config_build_dir(monkeykas, tmpdir):
-    conf_dir = str(tmpdir / 'test_env_variables')
-    env_build_dir = pathlib.Path(str(tmpdir / 'env-build-dir'))
-    shutil.copytree('tests/test_environment_variables', conf_dir)
-    monkeykas.chdir(conf_dir)
-
-    config = _write_config_with_build_dir('config-build-dir')
-    monkeykas.setenv('KAS_BUILD_DIR', str(env_build_dir))
-    kas.kas(['checkout', config])
-
-    assert (env_build_dir / 'conf').exists()
-
-    (env_build_dir / 'tmp-glibc').mkdir()
-    kas.kas(['clean', config])
-    assert not (env_build_dir / 'tmp-glibc').exists()
 
 
 @pytest.mark.dirsfromenv
