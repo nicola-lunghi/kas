@@ -62,9 +62,7 @@ class Macro:
             repo_loop.add(SetupReposStep())
 
             # setup commands are pairs of setup / cleanup commands
-            self.setup_commands = [
-                (SetupDir(), None)
-            ]
+            self.setup_commands = []
 
             if ('SSH_PRIVATE_KEY' in os.environ
                     or 'SSH_PRIVATE_KEY_FILE' in os.environ):
@@ -75,12 +73,15 @@ class Macro:
                 self.setup_commands.append((SetupSSHAgent(),
                                             CleanupSSHAgent()))
 
+            # SetupDir runs after FinishSetupRepos, because the build
+            # directory may be defined in the (not yet resolved) config file.
             self.setup_commands += [(x, None) for x in [
                 SetupHome(),
                 MakeNonInteractive(),
                 InitSetupRepos(),
                 repo_loop,
                 FinishSetupRepos(),
+                SetupDir(),
                 ReposCheckout(),
                 ReposApplyPatches(),
                 SetupEnviron(),
@@ -426,9 +427,10 @@ class SetupDir(Command):
         return 'setup_dir'
 
     def execute(self, ctx):
-        if not os.path.exists(ctx.build_dir):
-            os.mkdir(ctx.build_dir)
-        add_cachedir_tag(ctx.build_dir, "kas build directory")
+        build_dir = ctx.config.get_build_dir()
+        if not os.path.exists(build_dir):
+            os.mkdir(build_dir)
+        add_cachedir_tag(build_dir, "kas build directory")
 
 
 class SetupSSHAgent(Command):
@@ -495,11 +497,11 @@ class WriteBBConfig(Command):
                 absolute paths pointing into the build host.
             """
             # we need to walk up, which would require pathlib.Path >= 3.12
-            relpath = os.path.relpath(layer.path, ctx.build_dir)
+            relpath = os.path.relpath(layer.path, ctx.config.get_build_dir())
             return '${TOPDIR}/' + relpath
 
         def _write_bblayers_conf(ctx):
-            filename = ctx.build_dir + '/conf/bblayers.conf'
+            filename = ctx.config.get_build_dir() + '/conf/bblayers.conf'
             if not os.path.isdir(os.path.dirname(filename)):
                 os.makedirs(os.path.dirname(filename))
             layers_sorted = \
@@ -516,7 +518,7 @@ class WriteBBConfig(Command):
                 fds.write('BBFILES ??= ""\n')
 
         def _write_local_conf(ctx):
-            filename = ctx.build_dir + '/conf/local.conf'
+            filename = ctx.config.get_build_dir() + '/conf/local.conf'
             with open(filename, 'w') as fds:
                 fds.write(ctx.config.get_local_conf_header())
                 fds.write(f'MACHINE ??= "{ctx.config.get_machine()}"\n')

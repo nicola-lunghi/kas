@@ -45,6 +45,7 @@ class Config:
     def __init__(self, ctx, filename, target=None, task=None):
         self._override_target = target
         self._override_task = task
+        self._work_dir = ctx.kas_work_dir
         self._build_dir = ctx.build_dir
         self.__config = {}
         if not filename:
@@ -233,6 +234,25 @@ class Config:
         env = self._config.get('env', {})
         return {var: os.environ.get(var, env[var]) for var in env}
 
+    def _resolve_path(self, path):
+        """
+            Resolves a path relative to the work directory, unless it is
+            already absolute.
+        """
+        if not path:
+            return path
+        return path if os.path.isabs(path) \
+            else os.path.join(self._work_dir, path)
+
+    def get_build_dir(self):
+        """
+            Returns the build directory
+        """
+        build_dir = os.environ.get('KAS_BUILD_DIR',
+                                   self._config.get('build_dir',
+                                                    self._build_dir))
+        return self._resolve_path(build_dir)
+
     def get_multiconfig(self):
         """
             Returns the multiconfig array as bitbake string
@@ -250,14 +270,15 @@ class Config:
             If missing_ok=False, raises an ArtifactNotFoundError if no
             artifact for a given name is found.
         """
+        build_dir = self.get_build_dir()
         arts = self._config.get('artifacts', {})
         foundfiles = []
         for name, art in arts.items():
-            files = list(Path(self._build_dir).glob(art))
+            files = list(Path(build_dir).glob(art))
             if not missing_ok and len(files) == 0:
                 raise ArtifactNotFoundError(name, art)
             foundfiles.extend([(name, f) for f in files])
-        return [(n, f.relative_to(self._build_dir))
+        return [(n, f.relative_to(build_dir))
                 for n, f in foundfiles]
 
     def get_signers_config(self, keytype=None):

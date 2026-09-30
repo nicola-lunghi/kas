@@ -83,15 +83,22 @@ class Clean():
         ctx = create_global_context(args)
         default_conf_file = Path(ctx.kas_work_dir) / CONFIG_YAML_FILE
         build_system = 'openembedded'
+        self.build_dir = ctx.build_dir
         if args.config:
             self.config_files = args.config
         elif default_conf_file.exists():
             self.config_files = str(default_conf_file)
         if self.config_files:
-            # By definition, build_system key must be present in the first
-            # config file to take effect.
+            # By definition, build_system and build_dir keys must be present
+            # in the first config file to take effect.
             cf = ConfigFile.load(self.config_files.split(':')[0])
             build_system = cf.config.get('build_system', build_system)
+            if not os.environ.get('KAS_BUILD_DIR'):
+                cf_build_dir = cf.config.get('build_dir')
+                if cf_build_dir:
+                    self.build_dir = cf_build_dir \
+                        if os.path.isabs(cf_build_dir) \
+                        else os.path.join(ctx.kas_work_dir, cf_build_dir)
         if args.isar_privileged or build_system == 'isar':
             build_system = 'isar-privileged'
         elif args.isar_rootless:
@@ -100,7 +107,7 @@ class Clean():
         logging.debug('Run clean in "%s" mode' % build_system)
         if args.dry_run:
             logging.warning('Dry run, not removing anything')
-        tmpdirs = Path(ctx.build_dir).glob('tmp*')
+        tmpdirs = Path(self.build_dir).glob('tmp*')
 
         dirs_to_remove = []
         for tmpdir in tmpdirs:
@@ -173,9 +180,8 @@ class CleanSstate(Clean):
 
     def run(self, args):
         super().run(args)
-        ctx = get_context()
-        sstate_dir = Path(os.environ.get('SSTATE_DIR',
-                                         Path(ctx.build_dir) / 'sstate-cache'))
+        sstate_dir = Path(os.environ.get(
+            'SSTATE_DIR', Path(self.build_dir) / 'sstate-cache'))
         if sstate_dir.exists():
             logging.info(f'Removing {sstate_dir}/*')
             if not args.dry_run:
@@ -194,9 +200,8 @@ class CleanAll(CleanSstate):
 
     def run(self, args):
         super().run(args)
-        ctx = get_context()
-        downloads_dir = Path(os.environ.get('DL_DIR',
-                                            Path(ctx.build_dir) / 'downloads'))
+        downloads_dir = Path(os.environ.get(
+            'DL_DIR', Path(self.build_dir) / 'downloads'))
         if downloads_dir.exists():
             logging.info(f'Removing {downloads_dir}/*')
             if not args.dry_run:
@@ -258,7 +263,7 @@ class Purge(CleanAll):
                     if not args.dry_run:
                         shutil.rmtree(ref_repo)
 
-        build_dir = Path(ctx.build_dir)
+        build_dir = Path(ctx.config.get_build_dir())
         logging.info(f'Removing {build_dir}/*')
         if not args.dry_run:
             self.clear_dir_content(build_dir)

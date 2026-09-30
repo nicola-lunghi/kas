@@ -128,7 +128,7 @@ class BuildCommand(Command):
         predicate = Provenance(ctx, time_started, time_finished,
                                mode)
         stmt = Statement(predicate, ctx, time_started, time_finished).as_dict()
-        att_dir = Path(ctx.build_dir) / 'attestation'
+        att_dir = Path(ctx.config.get_build_dir()) / 'attestation'
         att_dir.mkdir(parents=True, exist_ok=True)
         with open(att_dir / 'kas-build.provenance.json', 'w') as f:
             f.write(json.dumps(stmt, indent=4))
@@ -143,15 +143,16 @@ class BuildCommand(Command):
         cmd = [bitbake, '-c', ctx.config.get_bitbake_task()] \
             + self.extra_bitbake_args + ctx.config.get_bitbake_targets()
 
+        build_dir = ctx.config.get_build_dir()
         time_started = datetime.now()
         if sys.stdout.isatty():
-            logging.info('%s$ %s', ctx.build_dir, ' '.join(cmd))
-            ret = subprocess.call(cmd, env=ctx.environ, cwd=ctx.build_dir)
+            logging.info('%s$ %s', build_dir, ' '.join(cmd))
+            ret = subprocess.call(cmd, env=ctx.environ, cwd=build_dir)
             if ret != 0:
                 raise CommandExecError(cmd, ret)
         else:
             loop = asyncio.get_event_loop()
-            loop.run_until_complete(run_cmd_async(cmd, cwd=ctx.build_dir,
+            loop.run_until_complete(run_cmd_async(cmd, cwd=build_dir,
                                                   liveupdate=True))
         time_finished = datetime.now()
 

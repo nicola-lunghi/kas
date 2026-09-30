@@ -286,7 +286,8 @@ def get_buildtools_dir():
         return pathlib.Path(env_path).resolve()
 
     # defaults to KAS_BUILD_DIR/buildtools
-    return (pathlib.Path(get_context().build_dir) / 'buildtools').resolve()
+    ctx = get_context()
+    return (pathlib.Path(ctx.config.get_build_dir()) / 'buildtools').resolve()
 
 
 def get_buildtools_filename():
@@ -475,8 +476,9 @@ def get_build_environ(build_system, ctx):
         env = {}
         env['PATH'] = '/usr/sbin:/usr/bin:/sbin:/bin'
 
-        (_, output) = run_cmd([str(get_bb_env_file), ctx.build_dir],
-                              cwd=init_repo.path, env=env)
+        (_, output) = run_cmd(
+            [str(get_bb_env_file), ctx.config.get_build_dir()],
+            cwd=init_repo.path, env=env)
         if init_script_log != '/dev/null':
             with open(init_script_log) as log:
                 msg = f'{init_script} output:\n'
